@@ -1,4 +1,4 @@
-# EduHub MongoDB Project - Humanized and Well-Commented Version
+# EduHub MongoDB Project 
 
 # This script sets up a MongoDB database for an educational platform called EduHub.
 # It creates collections for users, courses, enrollments, lessons, assignments, and submissions.
