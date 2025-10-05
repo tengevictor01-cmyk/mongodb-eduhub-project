@@ -1,0 +1,409 @@
+# EduHub MongoDB Project - Humanized and Well-Commented Version
+
+# This script sets up a MongoDB database for an educational platform called EduHub.
+# It creates collections for users, courses, enrollments, lessons, assignments, and submissions.
+# Each section is clearly explained to help you understand what the code does.
+
+from pymongo import MongoClient
+from datetime import datetime
+from bson import ObjectId
+import random
+import datetime
+import json
+
+
+# 1. CONNECT TO MONGODB DATABASE
+
+client = MongoClient('mongodb://localhost:27017/')  # Connect to MongoDB server
+edu_db = client['EduHub']  # Create or switch to EduHub databa
+
+# 2. DEFINE COLLECTIONS WITH VALIDATION SCHEMAS
+
+# Schema validation helps to ensure the data we insert is structured correctly.
+
+def create_collections():
+    users_schema = {
+        "$jsonSchema": {
+            "bsonType": "object",
+            "required": ["name", "email", "role"],
+            "properties": {
+                "name": {"bsonType": "string"},
+                "email": {"bsonType": "string"},
+                "role": {"enum": ["student", "instructor", "admin"]}
+            }
+        }
+    }
+
+    edu_db.create_collection("users", validator={"$jsonSchema": users_schema})
+    edu_db.create_collection("courses")
+    edu_db.create_collection("enrollments")
+    edu_db.create_collection("lessons")
+    edu_db.create_collection("assignments")
+    edu_db.create_collection("submissions")
+
+
+# 3. GENERATE SAMPLE DATA FOR TESTING.
+
+# The following functions create random test data to populate our database.
+
+def generate_sample_users():
+    roles = ["student", "instructor", "admin"]
+    users = []
+    for i in range(20):
+        user = {
+            "name": f"User {i+1}",
+            "email": f"user{i+1}@eduhub.com",
+            "role": random.choice(roles)
+        }
+        users.append(user)
+    return users
+
+def generate_sample_courses():
+    courses = []
+    for i in range(8):
+        course = {
+            "title": f"Course {i+1}",
+            "description": f"An engaging description for course {i+1}.",
+            "instructor_id": None  # We'll assign this later
+        }
+        courses.append(course)
+    return courses
+
+def generate_sample_enrollments(user_ids, course_ids):
+    enrollments = []
+    for _ in range(15):
+        enrollments.append({
+            "user_id": random.choice(user_ids),
+            "course_id": random.choice(course_ids),
+            "date_enrolled": datetime.datetime.now() - datetime.timedelta(days=random.randint(1, 100))
+        })
+    return enrollments
+
+def generate_sample_lessons(course_ids):
+    lessons = []
+    for i in range(25):
+        lessons.append({
+            "course_id": random.choice(course_ids),
+            "title": f"Lesson {i+1}",
+            "content": f"This is the content for lesson {i+1}."
+        })
+    return lessons
+
+def generate_sample_assignments(course_ids):
+    assignments = []
+    for i in range(10):
+        assignments.append({
+            "course_id": random.choice(course_ids),
+            "title": f"Assignment {i+1}",
+            "due_date": datetime.datetime.now() + datetime.timedelta(days=random.randint(1, 30))
+        })
+    return assignments
+
+def generate_sample_submissions(user_ids, assignment_ids):
+    submissions = []
+    for i in range(12):
+        submissions.append({
+            "assignment_id": random.choice(assignment_ids),
+            "user_id": random.choice(user_ids),
+            "grade": random.randint(40, 100),
+            "submission_date": datetime.datetime.now() - datetime.timedelta(days=random.randint(1, 30))
+        })
+    return submissions
+
+
+# 4. CRUD OPERATIONS - CREATE, READ, UPDATE, DELETE
+
+# These functions allow you to interact with the database.
+
+def add_user(user_data):
+    return edu_db.users.insert_one(user_data).inserted_id
+
+def get_user_by_email(email):
+    return edu_db.users.find_one({"email": email})
+
+def update_user_role(email, new_role):
+    edu_db.users.update_one({"email": email}, {"$set": {"role": new_role}})
+
+def delete_user(email):
+    edu_db.users.delete_one({"email": email})
+
+
+# 5. DATA ANALYSIS WITH AGGREGATION PIPELINES
+
+# Aggregations help summarize and analyze data efficiently.
+
+def enrollments_per_course():
+    return list(edu_db.enrollments.aggregate([
+        {"$group": {"_id": "$course_id", "total_enrollments": {"$sum": 1}}}
+    ]))
+
+def average_grade_per_student():
+    return list(edu_db.submissions.aggregate([
+        {"$group": {"_id": "$user_id", "average_grade": {"$avg": "$grade"}}}
+    ]))
+
+def monthly_enrollment_trend():
+    return list(edu_db.enrollments.aggregate([
+        {"$project": {"month": {"$month": "$date_enrolled"}}},
+        {"$group": {"_id": "$month", "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}}
+    ]))
+
+
+# 6. EXPORTING DATA FOR BACKUP OR REPORTS
+
+# Save all sample data and schema as JSON for reuse or documentation.
+
+def export_sample_data():
+    data = {
+        "users": generate_sample_users(),
+        "courses": generate_sample_courses()
+    }
+    with open('sample_data.json', 'w') as f:
+        json.dump(data, f, default=str, indent=4)
+
+def export_schema_validation():
+    schema = {
+        "users": {
+            "required_fields": ["name", "email", "role"],
+            "roles": ["student", "instructor", "admin"]
+        }
+    }
+    with open('schema_validation.json', 'w') as f:
+        json.dump(schema, f, indent=4)
+
+
+# 7. RUN SCRIPT
+
+if __name__ == '__main__':
+    print("\n--- EduHub MongoDB Project ---\n")
+    create_collections()
+
+    users = generate_sample_users()
+    courses = generate_sample_courses()
+
+    # Insert users and courses into database
+    user_ids = edu_db.users.insert_many(users).inserted_ids
+    course_ids = edu_db.courses.insert_many(courses).inserted_ids
+
+    # Generate dependent collections
+    enrollments = generate_sample_enrollments(user_ids, course_ids)
+    lessons = generate_sample_lessons(course_ids)
+    assignments = generate_sample_assignments(course_ids)
+    assignment_ids = edu_db.assignments.insert_many(assignments).inserted_ids
+    submissions = generate_sample_submissions(user_ids, assignment_ids)
+
+    # Insert into collections
+    edu_db.enrollments.insert_many(enrollments)
+    edu_db.lessons.insert_many(lessons)
+    edu_db.submissions.insert_many(submissions)
+
+    # Export data
+    export_sample_data()
+    export_schema_validation()
+
+    print("Database created and populated successfully!")# EduHub MongoDB Project - Humanized and Well-Commented Version
+
+# This script sets up a MongoDB database for an educational platform called EduHub.
+# It creates collections for users, courses, enrollments, lessons, assignments, and submissions.
+# Each section is clearly explained to help you understand what the code does.
+
+from pymongo import MongoClient
+from datetime import datetime
+from bson import ObjectId
+import random
+import datetime
+import json
+
+
+# 1. CONNECT TO MONGODB DATABASE
+
+client = MongoClient('mongodb://localhost:27017/')  # Connect to MongoDB server
+edu_db = client['EduHub']  # Create or switch to EduHub databa
+
+# 2. DEFINE COLLECTIONS WITH VALIDATION SCHEMAS
+
+# Schema validation helps to ensure the data we insert is structured correctly.
+
+def create_collections():
+    users_schema = {
+        "$jsonSchema": {
+            "bsonType": "object",
+            "required": ["name", "email", "role"],
+            "properties": {
+                "name": {"bsonType": "string"},
+                "email": {"bsonType": "string"},
+                "role": {"enum": ["student", "instructor", "admin"]}
+            }
+        }
+    }
+
+    edu_db.create_collection("users", validator={"$jsonSchema": users_schema})
+    edu_db.create_collection("courses")
+    edu_db.create_collection("enrollments")
+    edu_db.create_collection("lessons")
+    edu_db.create_collection("assignments")
+    edu_db.create_collection("submissions")
+
+
+# 3. GENERATE SAMPLE DATA FOR TESTING.
+
+# The following functions create random test data to populate our database.
+
+def generate_sample_users():
+    roles = ["student", "instructor", "admin"]
+    users = []
+    for i in range(20):
+        user = {
+            "name": f"User {i+1}",
+            "email": f"user{i+1}@eduhub.com",
+            "role": random.choice(roles)
+        }
+        users.append(user)
+    return users
+
+def generate_sample_courses():
+    courses = []
+    for i in range(8):
+        course = {
+            "title": f"Course {i+1}",
+            "description": f"An engaging description for course {i+1}.",
+            "instructor_id": None  # We'll assign this later
+        }
+        courses.append(course)
+    return courses
+
+def generate_sample_enrollments(user_ids, course_ids):
+    enrollments = []
+    for _ in range(15):
+        enrollments.append({
+            "user_id": random.choice(user_ids),
+            "course_id": random.choice(course_ids),
+            "date_enrolled": datetime.datetime.now() - datetime.timedelta(days=random.randint(1, 100))
+        })
+    return enrollments
+
+def generate_sample_lessons(course_ids):
+    lessons = []
+    for i in range(25):
+        lessons.append({
+            "course_id": random.choice(course_ids),
+            "title": f"Lesson {i+1}",
+            "content": f"This is the content for lesson {i+1}."
+        })
+    return lessons
+
+def generate_sample_assignments(course_ids):
+    assignments = []
+    for i in range(10):
+        assignments.append({
+            "course_id": random.choice(course_ids),
+            "title": f"Assignment {i+1}",
+            "due_date": datetime.datetime.now() + datetime.timedelta(days=random.randint(1, 30))
+        })
+    return assignments
+
+def generate_sample_submissions(user_ids, assignment_ids):
+    submissions = []
+    for i in range(12):
+        submissions.append({
+            "assignment_id": random.choice(assignment_ids),
+            "user_id": random.choice(user_ids),
+            "grade": random.randint(40, 100),
+            "submission_date": datetime.datetime.now() - datetime.timedelta(days=random.randint(1, 30))
+        })
+    return submissions
+
+
+# 4. CRUD OPERATIONS - CREATE, READ, UPDATE, DELETE
+
+# These functions allow you to interact with the database.
+
+def add_user(user_data):
+    return edu_db.users.insert_one(user_data).inserted_id
+
+def get_user_by_email(email):
+    return edu_db.users.find_one({"email": email})
+
+def update_user_role(email, new_role):
+    edu_db.users.update_one({"email": email}, {"$set": {"role": new_role}})
+
+def delete_user(email):
+    edu_db.users.delete_one({"email": email})
+
+
+# 5. DATA ANALYSIS WITH AGGREGATION PIPELINES
+
+# Aggregations help summarize and analyze data efficiently.
+
+def enrollments_per_course():
+    return list(edu_db.enrollments.aggregate([
+        {"$group": {"_id": "$course_id", "total_enrollments": {"$sum": 1}}}
+    ]))
+
+def average_grade_per_student():
+    return list(edu_db.submissions.aggregate([
+        {"$group": {"_id": "$user_id", "average_grade": {"$avg": "$grade"}}}
+    ]))
+
+def monthly_enrollment_trend():
+    return list(edu_db.enrollments.aggregate([
+        {"$project": {"month": {"$month": "$date_enrolled"}}},
+        {"$group": {"_id": "$month", "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}}
+    ]))
+
+
+# 6. EXPORTING DATA FOR BACKUP OR REPORTS
+
+# Save all sample data and schema as JSON for reuse or documentation.
+
+def export_sample_data():
+    data = {
+        "users": generate_sample_users(),
+        "courses": generate_sample_courses()
+    }
+    with open('sample_data.json', 'w') as f:
+        json.dump(data, f, default=str, indent=4)
+
+def export_schema_validation():
+    schema = {
+        "users": {
+            "required_fields": ["name", "email", "role"],
+            "roles": ["student", "instructor", "admin"]
+        }
+    }
+    with open('schema_validation.json', 'w') as f:
+        json.dump(schema, f, indent=4)
+
+
+# 7. RUN SCRIPT
+
+if __name__ == '__main__':
+    print("\n--- EduHub MongoDB Project ---\n")
+    create_collections()
+
+    users = generate_sample_users()
+    courses = generate_sample_courses()
+
+    # Insert users and courses into database
+    user_ids = edu_db.users.insert_many(users).inserted_ids
+    course_ids = edu_db.courses.insert_many(courses).inserted_ids
+
+    # Generate dependent collections
+    enrollments = generate_sample_enrollments(user_ids, course_ids)
+    lessons = generate_sample_lessons(course_ids)
+    assignments = generate_sample_assignments(course_ids)
+    assignment_ids = edu_db.assignments.insert_many(assignments).inserted_ids
+    submissions = generate_sample_submissions(user_ids, assignment_ids)
+
+    # Insert into collections
+    edu_db.enrollments.insert_many(enrollments)
+    edu_db.lessons.insert_many(lessons)
+    edu_db.submissions.insert_many(submissions)
+
+    # Export data
+    export_sample_data()
+    export_schema_validation()
+
+    print("Database created and populated successfully!")
